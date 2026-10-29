@@ -1,0 +1,155 @@
+// FoodLoop AI - Prisma Schema
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(uuid())
+  name          String
+  email         String    @unique
+  passwordHash  String
+  role          String    // PROVIDER, RECIPIENT, VOLUNTEER, ADMIN
+  phone         String?
+  accountStatus String    @default("ACTIVE") // ACTIVE, SUSPENDED
+  serviceArea   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  organization  Organization?
+  foodListings  FoodListing[]
+  assignments   VolunteerAssignment[]
+  notifications Notification[]
+  auditLogs     AuditLog[]
+}
+
+model Organization {
+  id                  String            @id @default(uuid())
+  userId              String            @unique
+  user                User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name                String
+  organizationType    String            // NGO, SHELTER, COMMUNITY_KITCHEN, FOOD_BANK
+  address             String
+  latitude            Float?
+  longitude           Float?
+  contactPerson       String?
+  phone               String?
+  serviceRadiusKm     Float             @default(15.0)
+  preferredCategories String?           // JSON array or comma-separated string
+  verificationStatus  String            @default("PENDING") // PENDING, VERIFIED, REJECTED
+  verificationReason  String?
+  reviewedBy          String?
+  reviewedAt          DateTime?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  requests            DonationRequest[]
+}
+
+model FoodListing {
+  id                   String            @id @default(uuid())
+  providerId           String
+  provider             User              @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  title                String
+  description          String
+  category             String            // PREPARED_MEALS, BAKERY, PRODUCE, DAIRY, PACKAGED, CANNED, OTHER
+  quantity             Float
+  remainingQuantity    Float
+  unit                 String            // portions, meals, kg, boxes
+  preparedAt           DateTime?
+  expiresAt            DateTime
+  pickupStartAt        DateTime
+  pickupEndAt          DateTime
+  address              String
+  latitude             Float?
+  longitude            Float?
+  dietaryNotes         String?           // e.g. Vegetarian, Halal, Vegan
+  allergenNotes        String?
+  handlingInstructions String?
+  safetyConfirmation   Boolean           @default(true)
+  status               String            @default("AVAILABLE") // AVAILABLE, REQUESTED, ACCEPTED, VOLUNTEER_ASSIGNED, PICKED_UP, DELIVERED, COMPLETED, CANCELLED, EXPIRED
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  requests             DonationRequest[]
+
+  @@index([providerId])
+  @@index([status])
+  @@index([expiresAt])
+}
+
+model DonationRequest {
+  id                     String               @id @default(uuid())
+  listingId              String
+  listing                FoodListing          @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  recipientOrganizationId String
+  recipientOrganization  Organization         @relation(fields: [recipientOrganizationId], references: [id], onDelete: Cascade)
+  requestedQuantity      Float
+  acceptedQuantity       Float?
+  status                 String               @default("PENDING") // PENDING, ACCEPTED, REJECTED, CANCELLED, COMPLETED
+  providerResponseReason String?
+  requestedAt            DateTime             @default(now())
+  respondedAt            DateTime?
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+
+  assignment             VolunteerAssignment?
+
+  @@index([listingId])
+  @@index([recipientOrganizationId])
+  @@index([status])
+}
+
+model VolunteerAssignment {
+  id                String          @id @default(uuid())
+  donationRequestId String          @unique
+  donationRequest   DonationRequest @relation(fields: [donationRequestId], references: [id], onDelete: Cascade)
+  volunteerId       String
+  volunteer         User            @relation(fields: [volunteerId], references: [id], onDelete: Cascade)
+  status            String          @default("ASSIGNED") // ASSIGNED, PICKED_UP, DELIVERED, CANCELLED
+  assignedAt        DateTime        @default(now())
+  pickedUpAt        DateTime?
+  deliveredAt       DateTime?
+  pickupNotes       String?
+  deliveryNotes     String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([volunteerId])
+  @@index([status])
+}
+
+model Notification {
+  id                String    @id @default(uuid())
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type              String    // REQUEST_RECEIVED, REQUEST_ACCEPTED, REQUEST_REJECTED, etc.
+  title             String
+  message           String
+  relatedEntityType String?
+  relatedEntityId   String?
+  readAt            DateTime?
+  createdAt         DateTime  @default(now())
+
+  @@index([userId])
+  @@index([readAt])
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  actorUserId String?
+  actor       User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  action      String   // e.g. USER_LOGIN, LISTING_CREATED, REQUEST_ACCEPTED, etc.
+  entityType  String
+  entityId    String
+  metadata    String?  // Safe JSON formatted string
+  createdAt   DateTime @default(now())
+
+  @@index([actorUserId])
+  @@index([action])
+  @@index([entityType])
+}
